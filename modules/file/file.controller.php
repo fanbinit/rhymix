@@ -102,6 +102,15 @@ class FileController extends File
 					$module_config = FileModel::getFileConfig($module_srl);
 					$allowed_attach_size = $module_config->allowed_attach_size * 1024 * 1024;
 					$allowed_filesize = $module_config->allowed_filesize * 1024 * 1024;
+					if (!empty($module_config->pre_conversion_filesize) && !empty($module_config->pre_conversion_types))
+					{
+						$extension = strtolower(array_last(explode('.', $file_info['name'])));
+						if ($extension && in_array($extension, $module_config->pre_conversion_types))
+						{
+							$allowed_attach_size = ($allowed_attach_size - $allowed_filesize) + ($module_config->pre_conversion_filesize * 1024 * 1024);
+							$allowed_filesize = $module_config->pre_conversion_filesize * 1024 * 1024;
+						}
+					}
 				}
 				if ($total_size > $allowed_filesize)
 				{
@@ -1158,10 +1167,14 @@ class FileController extends File
 	public function adjustUploadedImage($file_info, $config)
 	{
 		// Get image information
-		if (in_array($file_info['extension'], ['avif', 'heic', 'heif']) && !empty($config->magick_command))
+		if (in_array($file_info['extension'], ['avif', 'heic', 'heif']) && !empty($config->magick_command) && Rhymix\Framework\Storage::isExecutable($config->magick_command))
 		{
-			$command = \RX_WINDOWS ? escapeshellarg($config->magick_command) : $config->magick_command;
+			$command = Rhymix\Framework\Security::sanitize($config->magick_command, 'command');
 			$command .= ' identify ' . escapeshellarg($file_info['tmp_name']);
+			if (!\RX_WINDOWS && isset($config->magick_timeout) && $config->magick_timeout > 0)
+			{
+				$command = 'timeout -k1 ' . intval($config->magick_timeout) . ' ' . $command;
+			}
 			@exec($command, $output, $return_var);
 			if ($return_var === 0 && preg_match('/([A-Z]+) ([0-9]+)x([0-9]+)/', substr(array_last($output), strlen($file_info['tmp_name'])), $matches))
 			{
@@ -1326,11 +1339,15 @@ class FileController extends File
 				$adjusted['height'] -= $adjusted['height'] % 2;
 
 				// Convert using ffmpeg
-				$command = \RX_WINDOWS ? escapeshellarg($config->ffmpeg_command) : $config->ffmpeg_command;
+				$command = Rhymix\Framework\Security::sanitize($config->ffmpeg_command, 'command');
 				$command .= ' -nostdin -i ' . escapeshellarg($file_info['tmp_name']);
 				$command .= ' -movflags +faststart -pix_fmt yuv420p -c:v libx264 -crf 23';
 				$command .= sprintf(' -vf "scale=%d:%d"', $adjusted['width'], $adjusted['height']);
 				$command .= ' ' . escapeshellarg($output_name);
+				if (!\RX_WINDOWS && isset($config->ffmpeg_timeout) && $config->ffmpeg_timeout > 0)
+				{
+					$command = 'timeout -k1 ' . intval($config->ffmpeg_timeout) . ' ' . $command;
+				}
 				@exec($command, $output, $return_var);
 				$result = $return_var === 0 ? true : false;
 
@@ -1352,7 +1369,7 @@ class FileController extends File
 
 				// Convert using magick
 				$command = vsprintf('%s %s -resize %dx%d -quality %d %s %s %s', [
-					\RX_WINDOWS ? escapeshellarg($config->magick_command) : $config->magick_command,
+					Rhymix\Framework\Security::sanitize($config->magick_command, 'command'),
 					escapeshellarg($file_info['tmp_name']),
 					$adjusted['width'],
 					$adjusted['height'],
@@ -1361,6 +1378,10 @@ class FileController extends File
 					'-limit memory 64MB -limit map 128MB -limit disk 1GB',
 					escapeshellarg($output_name),
 				]);
+				if (!\RX_WINDOWS && isset($config->magick_timeout) && $config->magick_timeout > 0)
+				{
+					$command = 'timeout -k1 ' . intval($config->magick_timeout) . ' ' . $command;
+				}
 				@exec($command, $output, $return_var);
 				$result = $return_var === 0 ? true : false;
 			}
@@ -1370,10 +1391,10 @@ class FileController extends File
 				$result = FileHandler::createImageFile($file_info['tmp_name'], $output_name, $adjusted['width'], $adjusted['height'], $adjusted['type'], 'fill', $adjusted['quality'], $adjusted['rotate']);
 
 				// If the image cannot be resized using GD, try ImageMagick.
-				if (!$result && !empty($config->magick_command))
+				if (!$result && !empty($config->magick_command) && Rhymix\Framework\Storage::isExecutable($config->magick_command))
 				{
 					$command = vsprintf('%s %s -resize %dx%d -quality %d %s %s %s', [
-						\RX_WINDOWS ? escapeshellarg($config->magick_command) : $config->magick_command,
+						Rhymix\Framework\Security::sanitize($config->magick_command, 'command'),
 						escapeshellarg($file_info['tmp_name']),
 						$adjusted['width'],
 						$adjusted['height'],
@@ -1382,6 +1403,10 @@ class FileController extends File
 						'-limit memory 64MB -limit map 128MB -limit disk 1GB',
 						escapeshellarg($output_name),
 					]);
+					if (!\RX_WINDOWS && isset($config->magick_timeout) && $config->magick_timeout > 0)
+					{
+						$command = 'timeout -k1 ' . intval($config->magick_timeout) . ' ' . $command;
+					}
 					@exec($command, $output, $return_var);
 					$result = $return_var === 0 ? true : false;
 				}
@@ -1414,7 +1439,7 @@ class FileController extends File
 		}
 
 		// Analyze video file
-		$command = \RX_WINDOWS ? escapeshellarg($config->ffprobe_command) : $config->ffprobe_command;
+		$command = Rhymix\Framework\Security::sanitize($config->ffprobe_command, 'command');
 		$command .= ' -v quiet -print_format json -show_streams';
 		$command .= ' ' . escapeshellarg($file_info['tmp_name']);
 		@exec($command, $output, $return_var);
@@ -1558,7 +1583,7 @@ class FileController extends File
 			$adjusted['height'] -= $adjusted['height'] % 2;
 
 			// Convert using ffmpeg
-			$command = \RX_WINDOWS ? escapeshellarg($config->ffmpeg_command) : $config->ffmpeg_command;
+			$command = Rhymix\Framework\Security::sanitize($config->ffmpeg_command, 'command');
 			$command .= ' -nostdin -i ' . escapeshellarg($file_info['tmp_name']);
 			if ($adjusted['duration'] !== $file_info['duration'])
 			{
@@ -1568,6 +1593,10 @@ class FileController extends File
 			$command .= empty($stream_info['audio']) ? ' -an' : ' -acodec aac';
 			$command .= sprintf(' -vf "scale=%d:%d"', $adjusted['width'], $adjusted['height']);
 			$command .= ' ' . escapeshellarg($output_name);
+			if (!\RX_WINDOWS && isset($config->ffmpeg_timeout) && $config->ffmpeg_timeout > 0)
+			{
+				$command = 'timeout -k1 ' . intval($config->ffmpeg_timeout) . ' ' . $command;
+			}
 			@exec($command, $output, $return_var);
 			$result = $return_var === 0 ? true : false;
 
@@ -1597,9 +1626,13 @@ class FileController extends File
 		if ($config->video_thumbnail)
 		{
 			$thumbnail_name = $file_info['tmp_name'] . '.thumbnail.jpeg';
-			$command = \RX_WINDOWS ? escapeshellarg($config->ffmpeg_command) : $config->ffmpeg_command;
+			$command = Rhymix\Framework\Security::sanitize($config->ffmpeg_command, 'command');
 			$command .= sprintf(' -ss 00:00:00.%d -i %s -vframes 1', mt_rand(0, 99), escapeshellarg($file_info['tmp_name']));
 			$command .= ' -nostdin ' . escapeshellarg($thumbnail_name);
+			if (!\RX_WINDOWS && isset($config->ffmpeg_timeout) && $config->ffmpeg_timeout > 0)
+			{
+				$command = 'timeout -k1 ' . intval($config->ffmpeg_timeout) . ' ' . $command;
+			}
 			@exec($command, $output, $return_var);
 			if ($return_var === 0)
 			{

@@ -67,9 +67,10 @@ class FileAdminController extends File
 	{
 		// Default settings
 		$config = getModel('module')->getModuleConfig('file') ?: new stdClass;
-		$config->allowed_filesize = Context::get('allowed_filesize');
-		$config->allowed_attach_size = Context::get('allowed_attach_size');
+		$config->allowed_filesize = intval(Context::get('allowed_filesize'));
+		$config->allowed_attach_size = intval(Context::get('allowed_attach_size'));
 		$config->allowed_filetypes = Context::get('allowed_filetypes');
+		$config->pre_conversion_filesize = intval(Context::get('pre_conversion_filesize')) ?: null;
 
 		// Image settings
 		$config->image_autoconv = [];
@@ -121,6 +122,10 @@ class FileAdminController extends File
 			$config->magick_command = escape(utf8_trim(Context::get('magick_command'))) ?: '';
 		}
 
+		// Timeouts
+		$config->ffmpeg_timeout = max(0, intval(Context::get('ffmpeg_timeout'))) ?: null;
+		$config->magick_timeout = max(0, intval(Context::get('magick_timeout'))) ?: null;
+
 		// Check maximum file size (probably not necessary anymore)
 		if (PHP_INT_SIZE < 8)
 		{
@@ -145,6 +150,28 @@ class FileAdminController extends File
 		{
 			$config->allowed_extensions = array();
 			$config->allowed_filetypes = '*.*';
+		}
+
+		// Generate pre-conversion whitelist
+		$config->pre_conversion_types = [];
+		foreach ($config->image_autoconv ?? [] as $source_type => $target_type)
+		{
+			if (!empty($target_type) && $target_type !== true)
+			{
+				$config->pre_conversion_types[] = $source_type;
+				if ($source_type === 'jpg')
+				{
+					$config->pre_conversion_types[] = 'jpeg';
+				}
+			}
+			elseif ($source_type === 'gif2mp4' && $target_type === true)
+			{
+				$config->pre_conversion_types[] = 'gif';
+			}
+		}
+		if ($config->video_autoconv['any2mp4'])
+		{
+			$config->pre_conversion_types = array_merge($config->pre_conversion_types, ['mp4', 'webm', 'ogv', 'avi', 'mkv', 'mov', 'mpg', 'mpe', 'mpeg', 'wmv', 'm4v', 'flv']);
 		}
 
 		// Save and redirect
@@ -206,9 +233,10 @@ class FileAdminController extends File
 		if(!Context::get('use_default_file_config'))
 		{
 			$config->use_default_file_config = 'N';
-			$config->allowed_filesize = Context::get('allowed_filesize');
-			$config->allowed_attach_size = Context::get('allowed_attach_size');
+			$config->allowed_filesize = intval(Context::get('allowed_filesize'));
+			$config->allowed_attach_size = intval(Context::get('allowed_attach_size'));
 			$config->allowed_filetypes = Context::get('allowed_filetypes');
+			$config->pre_conversion_filesize = intval(Context::get('pre_conversion_filesize')) ?: null;
 
 			// Check maximum file size
 			if (PHP_INT_SIZE < 8)
@@ -273,6 +301,20 @@ class FileAdminController extends File
 		// Set download groups
 		$download_grant = Context::get('download_grant');
 		$config->download_grant = is_array($download_grant) ? array_values($download_grant) : array($download_grant);
+
+		// Create pre-conversion whitelist
+		$config->pre_conversion_types = [];
+		foreach ($config->image_autoconv ?? [] as $source_type => $target_type)
+		{
+			if ($target_type && $target_type !== true)
+			{
+				$config->pre_conversion_types[] = $source_type;
+				if ($source_type === 'jpg')
+				{
+					$config->pre_conversion_types[] = 'jpeg';
+				}
+			}
+		}
 
 		// Update
 		$oModuleController = getController('module');
@@ -388,7 +430,7 @@ class FileAdminController extends File
 		// Resize the image using GD or ImageMagick.
 		$config = FileModel::getFileConfig();
 		$result = FileHandler::createImageFile(FileHandler::getRealPath($file->uploaded_filename), $temp_filename, $width, $height, $format, 'fill', $quality);
-		if (!$result && !empty($config->magick_command))
+		if (!$result && !empty($config->magick_command) && Rhymix\Framework\Storage::isExecutable($config->magick_command))
 		{
 			$temp_dir = dirname($temp_filename);
 			if (!Rhymix\Framework\Storage::isDirectory($temp_dir))
@@ -396,13 +438,17 @@ class FileAdminController extends File
 				Rhymix\Framework\Storage::createDirectory($temp_dir);
 			}
 			$command = vsprintf('%s %s -resize %dx%d -quality %d %s %s %s', [
-				\RX_WINDOWS ? escapeshellarg($config->magick_command) : $config->magick_command,
+				Rhymix\Framework\Security::sanitize($config->magick_command, 'command'),
 				escapeshellarg(FileHandler::getRealPath($file->uploaded_filename)),
 				$width, $height, $quality,
 				'-auto-orient -strip',
 				'-limit memory 64MB -limit map 128MB -limit disk 1GB',
 				escapeshellarg($temp_filename),
 			]);
+			if (!\RX_WINDOWS && isset($config->magick_timeout) && $config->magick_timeout > 0)
+			{
+				$command = 'timeout -k1 ' . intval($config->magick_timeout) . ' ' . $command;
+			}
 			@exec($command, $output, $return_var);
 			$result = $return_var === 0 ? true : false;
 		}
