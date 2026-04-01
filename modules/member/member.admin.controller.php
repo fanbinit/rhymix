@@ -1838,7 +1838,7 @@ class MemberAdminController extends Member
 		// Perform login as the target member
 		// Session::login() sets the basic session variables, and setSessionInfo() populates Context with member details
 		Rhymix\Framework\Session::login($member_info->member_srl);
-		$oMemberController = getController('member');
+		$oMemberController = MemberController::getInstance();
 		$oMemberController->setSessionInfo();
 
 		$this->setRedirectUrl(getNotEncodedUrl(''));
