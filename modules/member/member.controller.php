@@ -2531,8 +2531,6 @@ class MemberController extends Member
 
 		// check IP access count.
 		$config = MemberModel::getMemberConfig();
-		$args = new stdClass();
-		$args->ipaddress = \RX_CLIENT_IP;
 		$used_identifier = null;
 
 		// check identifier
@@ -2610,6 +2608,8 @@ class MemberController extends Member
 			return $this->recordLoginError(-1, 'invalid_user_id');
 		}
 
+		$args = new stdClass;
+		$args->ipaddress = \RX_CLIENT_IP;
 		$output = executeQuery('member.getLoginCountByIp', $args);
 		$errorCount = $output->data->count;
 		if($errorCount >= $config->max_error_count)
@@ -2628,7 +2628,6 @@ class MemberController extends Member
 			}
 			else
 			{
-				$args->ipaddress = \RX_CLIENT_IP;
 				$output = executeQuery('member.deleteLoginCountByIp', $args);
 			}
 		}
@@ -2676,6 +2675,9 @@ class MemberController extends Member
 		if($oDB->isTableExists('member_count_history') && $config->enable_login_fail_report != 'N')
 		{
 			// check if there is login fail records.
+			/*
+			$args = new stdClass;
+			$args->member_srl = $member_info->member_srl;
 			$output = executeQuery('member.getLoginCountHistoryByMemberSrl', $args);
 			if($output->data && $output->data->content)
 			{
@@ -2708,6 +2710,7 @@ class MemberController extends Member
 					$output = executeQuery('member.deleteLoginCountHistoryByMemberSrl', $args);
 				}
 			}
+			*/
 		}
 
 		// When user checked to use auto-login
