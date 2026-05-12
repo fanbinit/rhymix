@@ -210,9 +210,10 @@ class ModuleObject extends BaseObject
 			return;
 		}
 
-		// Set admin layout
-		if(preg_match('/^disp[A-Z][a-z0-9\_]+Admin/', $this->act))
+		// Special treatment for admin actions
+		if(preg_match('/^disp(?:Admin[A-Z]|[A-Z][a-z0-9\_]+Admin)/', $this->act))
 		{
+			// Set admin layout
 			if(config('view.manager_layout') === 'admin')
 			{
 				$this->setLayoutPath('modules/admin/tpl');
@@ -222,6 +223,16 @@ class ModuleObject extends BaseObject
 			{
 				$oTemplate = new Rhymix\Framework\Template('modules/admin/tpl', '_admin_common.html');
 				$oTemplate->compile();
+			}
+
+			// Refresh session
+			if (!isset($_SESSION['RHYMIX']['admin_accessed']) && !headers_sent())
+			{
+				if (!isset($_SESSION['RHYMIX']['last_refresh']) || $_SESSION['RHYMIX']['last_refresh'] < time() - 10)
+				{
+					$_SESSION['RHYMIX']['admin_accessed'] = \RX_TIME;
+					Rhymix\Framework\Session::refresh(true);
+				}
 			}
 		}
 
@@ -805,6 +816,10 @@ class ModuleObject extends BaseObject
 		{
 			$this->setError($triggerOutput->getError());
 			$this->setMessage($triggerOutput->getMessage());
+			if ($triggerOutput->get('rx_error_location'))
+			{
+				$this->add('rx_error_location', $triggerOutput->get('rx_error_location'));
+			}
 			return FALSE;
 		}
 
@@ -846,6 +861,10 @@ class ModuleObject extends BaseObject
 			{
 				$this->setError($triggerOutput->getError());
 				$this->setMessage($triggerOutput->getMessage());
+				if ($triggerOutput->get('rx_error_location'))
+				{
+					$this->add('rx_error_location', $triggerOutput->get('rx_error_location'));
+				}
 				return false;
 			}
 
