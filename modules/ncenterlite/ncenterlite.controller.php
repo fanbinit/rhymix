@@ -1918,15 +1918,22 @@ class NcenterliteController extends Ncenterlite
 	 */
 	protected static function _createSummary($str): string
 	{
-		$str = escape(utf8_normalize_spaces(trim(strip_tags($str))), false);
-		if (function_exists('mb_strimwidth'))
-		{
-			return mb_strimwidth($str, 0, 50, '...', 'UTF-8');
-		}
-		else
-		{
-			return cut_str($str, 45);
-		}
+		// extract summary innerText from detail tag
+		$str = preg_replace('/<details?[^>]*>.*?<summary[^>]*>(.*?)<\/summary>.*?<\/details?>/is', '$1', $str);
+
+		// Remove tags
+		$str = preg_replace('!(</p|</div|<br)!i', ' $1', $str);
+		$str = strip_tags(preg_replace('!<(style|script)\b.+?</\\1>!is', '', $str));
+
+		// Convert temporarily html entity for truncate
+		$str = html_entity_decode($str, ENT_QUOTES);
+
+		// Replace all whitespaces to single space
+		$str = utf8_trim(utf8_normalize_spaces($str));
+
+		// Truncate string
+		$str = cut_str($str, 50, '...');
+		return escape($str, false);
 	}
 
 	/**

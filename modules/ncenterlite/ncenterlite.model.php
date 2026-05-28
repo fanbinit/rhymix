@@ -127,7 +127,7 @@ class NcenterliteModel extends Ncenterlite
 		);
 	}
 
-	function getNotifyTypebySrl($notify_srl)
+	public function getNotifyTypebySrl($notify_srl)
 	{
 		$args = new stdClass();
 		$args->notify_type_srl = $notify_srl;
@@ -137,7 +137,7 @@ class NcenterliteModel extends Ncenterlite
 		return $output;
 	}
 
-	function getNotifyTypeString($notify_srl, $notify_args)
+	public function getNotifyTypeString($notify_srl, $notify_args)
 	{
 		$this->notify_args = $notify_args;
 
@@ -149,7 +149,7 @@ class NcenterliteModel extends Ncenterlite
 		return $string;
 	}
 
-	function replaceNotifyType($match)
+	public function replaceNotifyType($match)
 	{
 		if(!in_array($match[1],$this->notify_arguments))
 		{
@@ -164,7 +164,7 @@ class NcenterliteModel extends Ncenterlite
 		return $this->notify_args->{$match[1]};
 	}
 
-	function isNotifyTypeExistsbySrl($notify_srl)
+	public function isNotifyTypeExistsbySrl($notify_srl)
 	{
 		$args = new stdClass();
 		$args->notify_type_srl = $notify_srl;
@@ -245,14 +245,14 @@ class NcenterliteModel extends Ncenterlite
 		return $config;
 	}
 
-	function getAllMemberConfig()
+	public function getAllMemberConfig()
 	{
 		$output = executeQueryArray('ncenterlite.getAllUserConfig');
 
 		return $output;
 	}
 
-	function getMyNotifyList($member_srl = null, $page = 1, $readed = 'N', $disp = false)
+	public function getMyNotifyList($member_srl = null, $page = 1, $readed = 'N', $disp = false)
 	{
 		if(!$member_srl && !Context::get('is_logged'))
 		{
@@ -266,11 +266,11 @@ class NcenterliteModel extends Ncenterlite
 
 		if($disp)
 		{
-			$output = $this->getMyDispNotifyList($member_srl, $readed);
+			$output = self::getMyDispNotifyList($member_srl, $readed);
 		}
 		else
 		{
-			$output = $this->_getMyNotifyList($member_srl, $page, $readed);
+			$output = self::_getMyNotifyList($member_srl, $page, $readed);
 		}
 
 		$config = $this->getConfig();
@@ -345,9 +345,9 @@ class NcenterliteModel extends Ncenterlite
 		$this->add('useProfileImage', $memberConfig->profile_image);
 	}
 
-	function _getMyNotifyList($member_srl = null, $page = 1, $readed = 'N')
+	private static function _getMyNotifyList($member_srl = null, $page = 1, $readed = 'N')
 	{
-		$oNcenterliteController = getController('ncenterlite');
+		$oNcenterliteController = NcenterliteController::getInstance();
 
 		if(!$member_srl)
 		{
@@ -435,7 +435,7 @@ class NcenterliteModel extends Ncenterlite
 		return $output;
 	}
 
-	function getMyDispNotifyList($member_srl = null, $readed = 'N')
+	private static function getMyDispNotifyList($member_srl = null, $readed = 'N')
 	{
 		if(!$member_srl)
 		{
@@ -458,7 +458,7 @@ class NcenterliteModel extends Ncenterlite
 		return $output;
 	}
 
-	function getNcenterliteAdminList()
+	public function getNcenterliteAdminList()
 	{
 		$args = new stdClass();
 		$args->page = Context::get('page');
@@ -470,7 +470,7 @@ class NcenterliteModel extends Ncenterlite
 		return $output;
 	}
 
-	function getMemberAdmins()
+	public function getMemberAdmins()
 	{
 		$args = new stdClass();
 		$args->is_admin = 'Y';
@@ -484,8 +484,12 @@ class NcenterliteModel extends Ncenterlite
 		return $member_srl;
 	}
 
-	function _getNewCount($member_srl = null)
+	public function _getNewCount($member_srl = null)
 	{
+		return $this::getNewCount($member_srl);
+	}
+
+	public static function getNewCount($member_srl = null) {
 		if($member_srl === null)
 		{
 			if (!Context::get('is_logged'))
@@ -505,7 +509,7 @@ class NcenterliteModel extends Ncenterlite
 		}
 		elseif (Rhymix\Framework\Cache::getDriverName() !== 'dummy')
 		{
-			$output = $this->_getMyNotifyList($member_srl);
+			$output = self::_getMyNotifyList($member_srl);
 			return $output->total_count;
 		}
 
@@ -517,7 +521,7 @@ class NcenterliteModel extends Ncenterlite
 	}
 
 
-	function getColorsetList()
+	public function getColorsetList()
 	{
 		$skin = Context::get('skin');
 		$skin_info = ModuleModel::loadSkinInfo($this->module_path, $skin);
@@ -722,7 +726,7 @@ class NcenterliteModel extends Ncenterlite
 	 * @param $datetime string YmdHis
 	 * @return string
 	 */
-	function getAgo($datetime)
+	public function getAgo($datetime)
 	{
 		$lang_type = Context::getLangType();
 
@@ -757,7 +761,7 @@ class NcenterliteModel extends Ncenterlite
 		return zdate($datetime, 'Y-m-d');
 	}
 
-	function getNotifyListByDocumentSrl($document_srl = null)
+	public function getNotifyListByDocumentSrl($document_srl = null)
 	{
 		if($document_srl === null)
 		{
@@ -774,7 +778,7 @@ class NcenterliteModel extends Ncenterlite
 		return $output->data;
 	}
 
-	function getNotifyListByCommentSrl($document_srl, $comment_srl)
+	public function getNotifyListByCommentSrl($document_srl, $comment_srl)
 	{
 		if($comment_srl === null)
 		{
@@ -797,7 +801,7 @@ class NcenterliteModel extends Ncenterlite
 	 * @param int $srl
 	 * @return array
 	 */
-	function getNotifyMemberSrlBySrl(int $srl) : array
+	public function getNotifyMemberSrlBySrl(int $srl) : array
 	{
 		if(!$srl)
 		{
@@ -820,7 +824,7 @@ class NcenterliteModel extends Ncenterlite
 		return $member_srls;
 	}
 
-	function getUserUnsubscribeConfigByUnsubscribeSrl($unsubscribe_srl = 0)
+	public function getUserUnsubscribeConfigByUnsubscribeSrl($unsubscribe_srl = 0)
 	{
 		$args = new stdClass();
 		$args->unsubscribe_srl = $unsubscribe_srl;
@@ -829,7 +833,7 @@ class NcenterliteModel extends Ncenterlite
 		return $output->data;
 	}
 
-	function getUserUnsubscribeConfigByTargetSrl($target_srl = 0, $member_srl = null)
+	public function getUserUnsubscribeConfigByTargetSrl($target_srl = 0, $member_srl = null)
 	{
 		if(!$member_srl)
 		{
