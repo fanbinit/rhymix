@@ -1,18 +1,21 @@
 <?php
 class NcenterliteModel extends Ncenterlite
 {
-	protected static $_config = NULL;
+	/**
+	 * @var stdClass|null
+	 */
+	protected static $_config = null;
 	protected static $_user_config = [];
+	/** @var stdClass|null */
 	public $notify_args;
-	public $notify_arguments;
+	/** @var string[] */
+	public $notify_arguments = [];
 
 	public static function getConfig()
 	{
 		if(self::$_config === NULL)
 		{
-			$oModuleModel = getModel('module');
-			$config = $oModuleModel->getModuleConfig('ncenterlite');
-
+			$config = ModuleModel::getModuleConfig('ncenterlite');
 			if(!$config)
 			{
 				$config = new stdClass();
