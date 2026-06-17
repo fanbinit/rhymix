@@ -158,6 +158,9 @@ class NcenterliteView extends Ncenterlite
 		}
 
 		$oNcenterliteModel = ncenterliteModel::getInstance();
+		$oDocumentModel = DocumentModel::getInstance();
+		$oCommentModel = CommentModel::getInstance();
+
 		$target_srl = Context::get('target_srl');
 		$unsubscribe_srl = Context::get('unsubscribe_srl');
 		$unsubscribe_type = Context::get('unsubscribe_type');
@@ -190,11 +193,11 @@ class NcenterliteView extends Ncenterlite
 
 		if($unsubscribe_type == 'document')
 		{
-			$text = getModel('document')->getDocument($target_srl)->getTitleText();
+			$text = $oDocumentModel->getDocument($target_srl)->getTitleText();
 			$type = lang('document');
 			if(!$text)
 			{
-				$text = getModel('comment')->getComment($target_srl)->getContentPlainText();
+				$text = $oCommentModel->getComment($target_srl)->getContentPlainText();
 				if(!$text)
 				{
 					throw new Rhymix\Framework\Exceptions\InvalidRequest;

@@ -74,7 +74,7 @@ class NcenterliteModel extends Ncenterlite
 					$config->use[$key] = array();
 					$config->use[$key]['web'] = $value;
 				}
-				getController('module')->insertModuleConfig('ncenterlite', $config);
+				ModuleController::getInstance()->insertModuleConfig('ncenterlite', $config);
 			}
 			unset($config->mention_format);
 
@@ -130,7 +130,7 @@ class NcenterliteModel extends Ncenterlite
 		);
 	}
 
-	public function getNotifyTypebySrl($notify_srl)
+	public function getNotifyTypebySrl(int $notify_srl)
 	{
 		$args = new stdClass();
 		$args->notify_type_srl = $notify_srl;
@@ -140,7 +140,7 @@ class NcenterliteModel extends Ncenterlite
 		return $output;
 	}
 
-	public function getNotifyTypeString($notify_srl, $notify_args)
+	public function getNotifyTypeString(int $notify_srl, object $notify_args)
 	{
 		$this->notify_args = $notify_args;
 
@@ -152,7 +152,7 @@ class NcenterliteModel extends Ncenterlite
 		return $string;
 	}
 
-	public function replaceNotifyType($match)
+	public function replaceNotifyType(array $match)
 	{
 		if(!in_array($match[1],$this->notify_arguments))
 		{
@@ -277,7 +277,7 @@ class NcenterliteModel extends Ncenterlite
 		}
 
 		$config = $this->getConfig();
-		$oMemberModel = getModel('member');
+		$oMemberModel = MemberModel::getInstance();
 		$list = $output->data;
 
 		foreach($list as $k => $v)
@@ -327,7 +327,7 @@ class NcenterliteModel extends Ncenterlite
 			return new BaseObject(-1, 'msg_not_permitted');
 		}
 
-		$memberConfig = getModel('member')->getMemberConfig();
+		$memberConfig = MemberModel::getInstance()->getMemberConfig();
 		$page = Context::get('page');
 
 		$logged_info = Context::get('logged_info');

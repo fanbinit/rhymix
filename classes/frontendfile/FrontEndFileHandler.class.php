@@ -540,7 +540,7 @@ class FrontEndFileHandler extends Handler
 						$concat_files[] = $file->media === 'all' ? $file->fileFullPath : array($file->fileFullPath, $file->media);
 						$concat_max_timestamp = max($concat_max_timestamp, filemtime($file->fileFullPath));
 					}
-					$concat_filename = self::$assetdir . '/combined/' . sha1(serialize($concat_files)) . '.css';
+					$concat_filename = self::$assetdir . '/combined/' . sha1(serialize($concat_files) . $concat_max_timestamp) . '.css';
 					if (!file_exists(\RX_BASEDIR . $concat_filename) || filemtime(\RX_BASEDIR . $concat_filename) < $concat_max_timestamp)
 					{
 						$concat_content = Rhymix\Framework\Formatter::concatCSS($concat_files, \RX_BASEDIR . $concat_filename);
@@ -636,7 +636,7 @@ class FrontEndFileHandler extends Handler
 						$concat_files[] = $file->fileFullPath;
 						$concat_max_timestamp = max($concat_max_timestamp, filemtime($file->fileFullPath));
 					}
-					$concat_filename = self::$assetdir . '/combined/' . sha1(serialize($concat_files)) . '.js';
+					$concat_filename = self::$assetdir . '/combined/' . sha1(serialize($concat_files) . $concat_max_timestamp) . '.js';
 					if (!file_exists(\RX_BASEDIR . $concat_filename) || filemtime(\RX_BASEDIR . $concat_filename) < $concat_max_timestamp)
 					{
 						$concat_content = Rhymix\Framework\Formatter::concatJS($concat_files, \RX_BASEDIR . $concat_filename);
