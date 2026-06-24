@@ -26,7 +26,6 @@ class Autoinstall extends ModuleObject
 		'layout',
 		'widget',
 		'module-skin',
-		'widget-skin',
 		'editor-skin',
 		'editor-component',
 		'theme-package',
@@ -51,7 +50,7 @@ class Autoinstall extends ModuleObject
 		}
 
 		// Check if the autoinstall_packages table is the Rhymix version.
-		if (!$oDB->isColumnExists('autoinstall_packages', 'type'))
+		if (!$oDB->isColumnExists('autoinstall_packages', 'install_type'))
 		{
 			return true;
 		}
@@ -78,7 +77,7 @@ class Autoinstall extends ModuleObject
 		}
 
 		// Check if the autoinstall_packages table is the Rhymix version.
-		if (!$oDB->isColumnExists('autoinstall_packages', 'type'))
+		if (!$oDB->isColumnExists('autoinstall_packages', 'install_type'))
 		{
 			$oDB->dropTable('autoinstall_packages');
 			$oDB->createTable($this->module_path . 'schemas/autoinstall_packages.xml');
