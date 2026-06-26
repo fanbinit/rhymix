@@ -84,6 +84,16 @@ class Package
 	}
 
 	/**
+	 * Get the name of the module, widget, or skin of the current package.
+	 *
+	 * @return string
+	 */
+	public function getName()
+	{
+		return basename($this->install_path);
+	}
+
+	/**
 	 * Get the lowest price of the current package.
 	 *
 	 * @return ?int
@@ -214,7 +224,7 @@ class Package
 	 */
 	public function isInstallable(string $check_type = 'all'): bool
 	{
-		if (!preg_match('/_(auto)$/', $this->install_type))
+		if (!preg_match('/^free_(auto|unverified)$/', $this->install_type))
 		{
 			return false;
 		}

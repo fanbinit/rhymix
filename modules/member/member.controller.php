@@ -3504,7 +3504,7 @@ class MemberController extends Member
 	 */
 	function updateMemberPassword($args)
 	{
-		if($args->password)
+		if (isset($args->password))
 		{
 			// check password strength
 			$config = MemberModel::getMemberConfig();
@@ -3517,7 +3517,7 @@ class MemberController extends Member
 
 			$args->password = MemberModel::hashPassword($args->password);
 		}
-		else if($args->hashed_password)
+		elseif (isset($args->hashed_password))
 		{
 			$args->password = $args->hashed_password;
 		}
