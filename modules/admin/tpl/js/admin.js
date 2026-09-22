@@ -409,6 +409,7 @@ jQuery(function($){
 			})
 			.click(function(){
 				var $this = $(this), $modal, $btnClose, disabled;
+				if($this.data('is_readonly')) return;
 
 				// get and initialize modal window
 				$modal = $( $this.attr('href') );
@@ -1670,6 +1671,7 @@ jQuery(function($){
 			$g11n_search.find('.set').append('<i class="x_icon-chevron-down"></i>').click(function(){
 				var $this = $(this);
 				var lang_code = $this.data('lang_code');
+				var is_noescape = $this.parents('.x_modal').data('anchor').data('is_noescape') || false;
 
 				g11n_search_save_confirm();
 
@@ -1701,6 +1703,9 @@ jQuery(function($){
 						if(pattern.test(value)){
 							$this.val('').data('value', '');
 						}else{
+							if (!is_noescape) {
+								value = value.unescape();
+							}
 							$this.val(value).data('value', value);
 						}
 					});
@@ -1961,6 +1966,20 @@ jQuery(function($){
 				$this.hide();
 				$setter.attr('href', '#g11n').xeModalWindow();
 
+				if ($this.prop('disabled')) {
+					$displayInput.prop('disabled', true);
+					$remover.data('is_readonly', true);
+					$setter.data('is_readonly', true);
+				}
+				if ($this.prop('readonly')) {
+					$displayInput.prop('readonly', true);
+					$remover.data('is_readonly', true);
+					$setter.data('is_readonly', true);
+				}
+				if ($this.hasClass('lang_noescape')) {
+					$setter.data('is_noescape', true);
+				}
+
 				// bind selected
 				$displayInput.bind('selected.g11n', function(e, code, value){
 					$displayInput
@@ -1997,6 +2016,7 @@ jQuery(function($){
 					var $g11n_set_input = $('#lang_' + $this.data('lang-target'));
 
 					if(!$g11n_set_input.data('active')) return;
+					if($this.data('is_readonly')) return;
 
 					$g11n_set_input
 						.val('')
