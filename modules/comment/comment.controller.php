@@ -35,7 +35,7 @@ class CommentController extends Comment
 		}
 
 		// Check if voting is enabled.
-		$comment_config = ModuleModel::getModulePartConfig('comment', $oComment->get('module_srl'));
+		$comment_config = ModuleModel::getModulePartConfig('comment', DocumentModel::getDocument($oComment->get('document_srl'))->get('module_srl'));
 		if($comment_config->use_vote_up === 'N')
 		{
 			throw new Rhymix\Framework\Exceptions\FeatureDisabled;
@@ -96,7 +96,7 @@ class CommentController extends Comment
 		}
 
 		// Check if voting and canceling are enabled.
-		$comment_config = ModuleModel::getModulePartConfig('comment', $oComment->get('module_srl'));
+		$comment_config = ModuleModel::getModulePartConfig('comment', DocumentModel::getDocument($oComment->get('document_srl'))->get('module_srl'));
 		$module_info = $this->module_info ?: ModuleModel::getModuleInfoByModuleSrl($oComment->get('module_srl'));
 		if (isset($comment_config->allow_vote_cancel))
 		{
@@ -165,7 +165,7 @@ class CommentController extends Comment
 		}
 
 		// Check if voting is enabled.
-		$comment_config = ModuleModel::getModulePartConfig('comment', $oComment->get('module_srl'));
+		$comment_config = ModuleModel::getModulePartConfig('comment', DocumentModel::getDocument($oComment->get('document_srl'))->get('module_srl'));
 		if($comment_config->use_vote_down === 'N')
 		{
 			throw new Rhymix\Framework\Exceptions\FeatureDisabled;
@@ -220,7 +220,7 @@ class CommentController extends Comment
 		}
 
 		// Check if voting and canceling are enabled.
-		$comment_config = ModuleModel::getModulePartConfig('comment', $oComment->get('module_srl'));
+		$comment_config = ModuleModel::getModulePartConfig('comment', DocumentModel::getDocument($oComment->get('document_srl'))->get('module_srl'));
 		$module_info = $this->module_info ?: ModuleModel::getModuleInfoByModuleSrl($oComment->get('module_srl'));
 		if (isset($comment_config->allow_vote_cancel))
 		{
@@ -421,7 +421,7 @@ class CommentController extends Comment
 		}
 
 		// Check if canceling is allowed.
-		$comment_config = ModuleModel::getModulePartConfig('comment', $oComment->get('module_srl'));
+		$comment_config = ModuleModel::getModulePartConfig('comment', DocumentModel::getDocument($oComment->get('document_srl'))->get('module_srl'));
 		if (isset($comment_config->allow_declare_cancel))
 		{
 			if ($comment_config->allow_declare_cancel !== 'Y')

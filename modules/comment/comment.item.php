@@ -196,13 +196,11 @@ class CommentItem extends BaseObject
 
 		if ($strict)
 		{
-			$module_info = ModuleModel::getModuleInfoByModuleSrl($this->get('module_srl'));
-			if (!$module_info)
-			{
-				return false;
-			}
-			$grant = ModuleModel::getGrant($module_info, Context::get('logged_info'));
-			if (isset($grant->list) && isset($grant->view) && ($grant->list !== true || $grant->view !== true))
+			// The parent document is authoritative after moves/restores, including
+			// legacy comments whose module_srl is zero or stale.
+			$oDocument = DocumentModel::getDocument($this->get('document_srl'));
+			$module_info = ModuleModel::getModuleInfoByModuleSrl($oDocument->get('module_srl'));
+			if (!$module_info || !ModuleModel::getGrant($module_info, Context::get('logged_info'))->access || !$oDocument->isAccessible(true))
 			{
 				return false;
 			}
