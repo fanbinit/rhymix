@@ -53,6 +53,7 @@ class Document extends ModuleObject
 		$oDB->addIndex("documents","idx_module_voted_count", array("module_srl","voted_count"));
 		$oDB->addIndex("documents","idx_module_regdate", array("module_srl","regdate"));
 		$oDB->addIndex("documents","idx_module_notice", array("module_srl","is_notice"));
+		$oDB->addIndex("documents","idx_module_notice_status", array("module_srl","is_notice","status"));
 		$oDB->addIndex("documents","idx_module_document_srl", array("module_srl","document_srl"));
 		$oDB->addIndex("documents","idx_module_blamed_count", array("module_srl","blamed_count"));
 		$oDB->addIndex("document_aliases", "idx_module_title", array("module_srl","alias_title"), true);
@@ -76,6 +77,7 @@ class Document extends ModuleObject
 
 		// 2007. 11. 20 create a composite index on the columns(module_srl + is_notice)
 		if(!$oDB->isIndexExists("documents","idx_module_notice")) return true;
+		if(!$oDB->isIndexExists("documents","idx_module_notice_status")) return true;
 
 		// 2008. 02. 18 create a composite index on the columns(module_srl + document_srl) (checked by Manian))
 		if(!$oDB->isIndexExists("documents","idx_module_document_srl")) return true;
@@ -160,6 +162,10 @@ class Document extends ModuleObject
 		if(!$oDB->isIndexExists("documents","idx_module_notice"))
 		{
 			$oDB->addIndex("documents","idx_module_notice", array("module_srl","is_notice"));
+		}
+		if(!$oDB->isIndexExists("documents","idx_module_notice_status"))
+		{
+			$oDB->addIndex("documents","idx_module_notice_status", array("module_srl","is_notice","status"));
 		}
 
 		// 2008. 02. 18 create a composite index on the columns(module_srl + document_srl) (checked by Manian))
