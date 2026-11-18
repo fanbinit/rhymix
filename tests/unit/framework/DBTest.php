@@ -129,6 +129,34 @@ class DBTest extends \Codeception\Test\Unit
 		$this->assertEquals(0, $oDB->getTransactionLevel());
 	}
 
+	public function testCheckedCommitRollsBackAfterDriverFailure()
+	{
+		$db = Rhymix\Framework\DB::getInstance();
+		$level = $db->begin();
+		$statement = $db->query('SELECT 1 UNION ALL SELECT 2');
+		$statement->fetch();
+
+		$this->assertFalse($db->commitChecked($level, 'test.unreadResult'));
+		$this->assertFalse($db->getHandle()->inTransaction());
+		$this->assertSame(0, $db->getTransactionLevel());
+		$this->assertTrue($db->commitChecked($db->begin(), 'test.nextTransaction'));
+	}
+
+	public function testCheckedCommitPreservesCallerTransaction()
+	{
+		$db = Rhymix\Framework\DB::getInstance();
+		$db->begin();
+		$level = $db->begin();
+		$this->assertTrue($db->commitChecked($level, 'test.nested'));
+
+		$level = $db->begin();
+		$db->begin(); // Simulate a save hook leaving a savepoint open.
+		$this->assertFalse($db->commitChecked($level, 'test.unbalanced'));
+		$this->assertSame(1, $db->getTransactionLevel());
+		$this->assertTrue($db->getHandle()->inTransaction());
+		$this->assertSame(0, $db->rollback());
+	}
+
 	public function testAddPrefixes()
 	{
 		$oDB = Rhymix\Framework\DB::getInstance();

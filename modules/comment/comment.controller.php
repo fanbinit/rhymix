@@ -700,7 +700,7 @@ class CommentController extends Comment
 
 		// begin transaction
 		$oDB = DB::getInstance();
-		$oDB->begin();
+		$transaction_level = $oDB->begin();
 
 		// Enter a list of comments first
 		$list_args = new stdClass();
@@ -813,8 +813,11 @@ class CommentController extends Comment
 		// call a trigger(after)
 		ModuleHandler::triggerCall('comment.insertComment', 'after', $obj);
 
-		// commit
-		$oDB->commit();
+		$context = sprintf('comment.insertComment module_srl=%d document_srl=%d comment_srl=%d', $obj->module_srl, $obj->document_srl, $obj->comment_srl);
+		if (!$oDB->commitChecked($transaction_level, $context))
+		{
+			return new BaseObject(-1, 'msg_server_error_see_log');
+		}
 
 		// grant autority of the comment
 		if(!$manual_inserted)
@@ -1059,7 +1062,7 @@ class CommentController extends Comment
 
 		// begin transaction
 		$oDB = DB::getInstance();
-		$oDB->begin();
+		$transaction_level = $oDB->begin();
 
 		// Update
 		$output = executeQuery('comment.updateComment', $obj);
@@ -1087,8 +1090,11 @@ class CommentController extends Comment
 		// call a trigger (after)
 		ModuleHandler::triggerCall('comment.updateComment', 'after', $obj);
 
-		// commit
-		$oDB->commit();
+		$context = sprintf('comment.updateComment module_srl=%d document_srl=%d comment_srl=%d', $obj->module_srl, $obj->document_srl, $obj->comment_srl);
+		if (!$oDB->commitChecked($transaction_level, $context))
+		{
+			return new BaseObject(-1, 'msg_server_error_see_log');
+		}
 
 		$output->add('comment_srl', $obj->comment_srl);
 

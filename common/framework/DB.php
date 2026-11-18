@@ -712,6 +712,57 @@ class DB
 	}
 
 	/**
+	 * Finish the transaction opened by begin() at the given level.
+	 * The context is a log label containing the operation and numeric record IDs.
+	 */
+	public function commitChecked(int $level, string $context): bool
+	{
+		$actual_level = $this->_transaction_level;
+		if ($level > 0 && $actual_level === $level && $this->_handle->inTransaction())
+		{
+			$this->commit();
+			if ($level > 1 || !$this->isError())
+			{
+				return true;
+			}
+
+			// Capture the driver error before rollback or another query overwrites it.
+			$info = $this->_handle->errorInfo();
+			error_log(sprintf('Rhymix commit failed: %s SQLSTATE=%s driver_code=%s', $context, $info[0], $info[1] ?? 'unknown'));
+
+			// commit() has already decremented the level, even on failure.
+			$this->_transaction_level = $level;
+		}
+		else
+		{
+			error_log(sprintf('Rhymix commit failed: %s expected_level=%d actual_level=%d in_transaction=%d',
+				$context, $level, $actual_level, $this->_handle->inTransaction()));
+		}
+
+		if (!$this->_handle->inTransaction())
+		{
+			$this->_transaction_level = 0;
+			return false;
+		}
+
+		// An unread result can block ROLLBACK as well as COMMIT.
+		if ($this->_last_stmt instanceof \PDOStatement)
+		{
+			$this->_last_stmt->closeCursor();
+		}
+		while ($level > 0 && $this->_transaction_level >= $level)
+		{
+			$this->rollback();
+			if ($this->isError())
+			{
+				error_log('Rhymix rollback failed: ' . $context . ' ' . $this->_errstr);
+				break;
+			}
+		}
+		return false;
+	}
+
+	/**
 	 * Get the current transaction level.
 	 *
 	 * @return int

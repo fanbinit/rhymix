@@ -853,7 +853,7 @@ class DocumentController extends Document
 
 		// begin transaction
 		$oDB = DB::getInstance();
-		$oDB->begin();
+		$transaction_level = $oDB->begin();
 
 		// Insert data into the DB
 		$output = executeQuery('document.insertDocument', $obj);
@@ -964,8 +964,11 @@ class DocumentController extends Document
 			ModuleHandler::triggerCall('document.publishDocument', 'after', $obj);
 		}
 
-		// commit
-		$oDB->commit();
+		$context = sprintf('document.insertDocument module_srl=%d document_srl=%d', $obj->module_srl, $obj->document_srl);
+		if (!$oDB->commitChecked($transaction_level, $context))
+		{
+			return new BaseObject(-1, 'msg_server_error_see_log');
+		}
 
 		// return
 		if(!$manual_inserted && !$isRestore)
@@ -1202,7 +1205,7 @@ class DocumentController extends Document
 
 		// Begin transaction
 		$oDB = DB::getInstance();
-		$oDB->begin();
+		$transaction_level = $oDB->begin();
 
 		// Insert history
 		$bUseHistory = $document_config->use_history == 'Y' || $document_config->use_history == 'Trace';
@@ -1431,8 +1434,11 @@ class DocumentController extends Document
 			ModuleHandler::triggerCall('document.publishDocument', 'after', $obj);
 		}
 
-		// commit
-		$oDB->commit();
+		$context = sprintf('document.updateDocument module_srl=%d document_srl=%d', $obj->module_srl, $obj->document_srl);
+		if (!$oDB->commitChecked($transaction_level, $context))
+		{
+			return new BaseObject(-1, 'msg_server_error_see_log');
+		}
 
 		// Remove the thumbnail file
 		Rhymix\Framework\Storage::deleteDirectory(RX_BASEDIR . sprintf('files/thumbnails/%s', getNumberingPath($obj->document_srl, 3)));
