@@ -41,14 +41,17 @@ class DBStmtHelper extends \PDOStatement
 	{
 		$start_time = microtime(true);
 		$db_class = DB::getInstance($this->_type);
+		$db_class->guardSaveTransaction();
 
 		try
 		{
 			$result = parent::execute($params);
+			$db_class->observeSaveStatement($this->queryString);
 			$db_class->clearError();
 		}
 		catch (\PDOException $e)
 		{
+			$db_class->observeSaveStatement($this->queryString, $e);
 			$db_class->setError(-1, $e->getMessage());
 			throw new DBError($e->getMessage(), 0, $e);
 		}

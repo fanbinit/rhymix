@@ -51,6 +51,8 @@ class DB
 	 * Transaction level.
 	 */
 	protected $_transaction_level = 0;
+	protected $_save_traces = [];
+	protected $_save_connection_id = null;
 
 	/**
 	 * Get a singleton instance of the DB class.
@@ -144,6 +146,7 @@ class DB
 
 		try
 		{
+			$this->_save_connection_id = null;
 			$this->_handle = new Helpers\DBHelper($dsn, $config['user'], $config['pass'], $options);
 			$this->_handle->setType($this->_type);
 		}
@@ -605,12 +608,112 @@ class DB
 	}
 
 	/**
+	 * Track the DB connection and the first driver failure for a board save.
+	 * The context contains only the operation and numeric record IDs.
+	 */
+	public function beginChecked(string $context): int
+	{
+		$this->guardSaveTransaction();
+		if ($this->_save_connection_id === null)
+		{
+			$stmt = $this->_handle->query('SELECT CONNECTION_ID()');
+			if ($stmt)
+			{
+				$this->_save_connection_id = (int)$stmt->fetchColumn();
+				$stmt->closeCursor();
+			}
+		}
+		$level = $this->_transaction_level + 1;
+		$this->_save_traces[$level] = (object)[
+			'context' => $context, 'connection_id' => $this->_save_connection_id,
+			'first_error' => null, 'ended_at' => null,
+		];
+		return $this->begin();
+	}
+
+	/**
+	 * Do not let a hook continue writing in autocommit after a server rollback.
+	 */
+	public function guardSaveTransaction(): void
+	{
+		if (!$this->_save_traces) return;
+		if ($this->_transaction_level > 0 && !$this->_handle->inTransaction())
+		{
+			$this->observeSaveStatement('BOUNDARY');
+		}
+		foreach ($this->_save_traces as $trace)
+		{
+			if ($trace->ended_at !== null)
+			{
+				throw new Exceptions\DBError('Save transaction already ended');
+			}
+		}
+	}
+
+	/**
+	 * Called at the PDO boundary, before a later query can clear errorInfo().
+	 * Record query identifiers, operation and call sites without SQL or bindings.
+	 */
+	public function observeSaveStatement(string $statement, ?\PDOException $error = null): void
+	{
+		if (!$this->_save_traces) return;
+		$driver_active = $this->_handle->inTransaction();
+		$active = $error && $driver_active ? $this->_handle->refreshTransactionStatus() : $driver_active;
+		if (!$error && $active) return;
+
+		foreach ($this->_save_traces as $level => $trace)
+		{
+			$first_error = $error && $trace->first_error === null;
+			$ended = !$active && $trace->ended_at === null;
+			if (!$first_error && !$ended) continue;
+
+			preg_match('/^\s*([a-z]+)/i', $statement, $match);
+			$operation = strtoupper($match[1] ?? 'UNKNOWN');
+			$query = $this->_query_id ?: $operation;
+			$driver_error = $error ? [
+				'query' => $query, 'SQLSTATE' => $error->errorInfo[0] ?? $error->getCode(),
+				'driver_code' => $error->errorInfo[1] ?? null,
+				'pdo_before_check' => $driver_active, 'active_after_check' => $active,
+			] : null;
+			if ($first_error) $trace->first_error = $driver_error;
+			if ($ended) $trace->ended_at = $query;
+			$event = $ended ? 'transaction_ended' : 'statement_error';
+			if ($active === null) $event = 'transaction_state_unknown';
+			$this->logSaveTrace($trace, $event, $level, $operation, $driver_error);
+		}
+	}
+
+	private function logSaveTrace($trace, string $event, int $level, string $operation, ?array $driver_error = null): void
+	{
+		$stack = [];
+		$bytes = 0;
+		foreach (debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 22) as $frame)
+		{
+			$file = $frame['file'] ?? '';
+			if (!$file || !str_starts_with($file, \RX_BASEDIR)) continue;
+			$location = substr($file, strlen(\RX_BASEDIR)) . ':' . $frame['line'];
+			if (str_starts_with($location, 'common/framework/') || str_starts_with($location, 'common/legacy.php')) continue;
+			$entry = $location . ' ' . $frame['function'];
+			$bytes += strlen($entry);
+			if ($bytes > 450) break; // Keep the JSON intact in FastCGI error logs.
+			$stack[] = $entry;
+		}
+		error_log('Rhymix save diagnostic: ' . json_encode([
+			'event' => $event, 'save' => $trace->context, 'connection_id' => $trace->connection_id,
+			'scope_level' => $level, 'actual_level' => $this->_transaction_level,
+			'in_transaction' => $this->_handle->inTransaction(), 'operation' => $operation,
+			'error' => $driver_error, 'first_error' => $trace->first_error, 'ended_at' => $trace->ended_at, 'stack' => $stack,
+		], JSON_UNESCAPED_SLASHES));
+	}
+
+	/**
 	 * Begin a transaction.
 	 *
 	 * @return int
 	 */
 	public function begin(): int
 	{
+		$this->guardSaveTransaction();
 		if (!$this->_handle->inTransaction())
 		{
 			try
@@ -620,6 +723,7 @@ class DB
 			}
 			catch (\PDOException $e)
 			{
+				$this->observeSaveStatement('BEGIN', $e);
 				$this->setError(-1, $e->getMessage());
 			}
 
@@ -643,6 +747,17 @@ class DB
 	 */
 	public function rollback(): int
 	{
+		$level = $this->_transaction_level;
+		if (isset($this->_save_traces[$level]))
+		{
+			$this->logSaveTrace($this->_save_traces[$level], 'rollback', $level, 'ROLLBACK');
+			unset($this->_save_traces[$level]);
+		}
+		if (!$this->_handle->inTransaction())
+		{
+			// A nested rollback must not unguard a failed, caller-owned save.
+			return $this->_transaction_level = $this->_save_traces ? max(0, $level - 1) : 0;
+		}
 		if ($this->_handle->inTransaction() && $this->_transaction_level === 1)
 		{
 			try
@@ -679,6 +794,11 @@ class DB
 	 */
 	public function commit(): int
 	{
+		if (isset($this->_save_traces[$this->_transaction_level]))
+		{
+			// The save owner always uses commitChecked().
+			$this->logSaveTrace($this->_save_traces[$this->_transaction_level], 'unexpected_commit', $this->_transaction_level, 'COMMIT');
+		}
 		if ($this->_handle->inTransaction() && $this->_transaction_level === 1)
 		{
 			try
@@ -718,7 +838,9 @@ class DB
 	public function commitChecked(int $level, string $context): bool
 	{
 		$actual_level = $this->_transaction_level;
-		if ($level > 0 && $actual_level === $level && $this->_handle->inTransaction())
+		$trace = $this->_save_traces[$level] ?? null;
+		unset($this->_save_traces[$level]);
+		if ((!$trace || $trace->ended_at === null) && $level > 0 && $actual_level === $level && $this->_handle->inTransaction())
 		{
 			$this->commit();
 			if ($level > 1 || !$this->isError())
@@ -730,18 +852,30 @@ class DB
 			$info = $this->_handle->errorInfo();
 			error_log(sprintf('Rhymix commit failed: %s SQLSTATE=%s driver_code=%s', $context, $info[0], $info[1] ?? 'unknown'));
 
+			if ($trace)
+			{
+				$driver_error = ['query' => 'COMMIT', 'SQLSTATE' => $info[0], 'driver_code' => $info[1] ?? null];
+				$trace->first_error ??= $driver_error;
+				$this->logSaveTrace($trace, 'commit_error', $level, 'COMMIT', $driver_error);
+			}
+
 			// commit() has already decremented the level, even on failure.
 			$this->_transaction_level = $level;
 		}
 		else
 		{
+			if ($trace) $this->logSaveTrace($trace, 'commit_mismatch', $level, 'COMMIT');
 			error_log(sprintf('Rhymix commit failed: %s expected_level=%d actual_level=%d in_transaction=%d',
 				$context, $level, $actual_level, $this->_handle->inTransaction()));
 		}
 
 		if (!$this->_handle->inTransaction())
 		{
-			$this->_transaction_level = 0;
+			foreach (array_keys($this->_save_traces) as $scope)
+			{
+				if ($scope >= $level) unset($this->_save_traces[$scope]);
+			}
+			$this->_transaction_level = $this->_save_traces ? max(0, $level - 1) : 0;
 			return false;
 		}
 
@@ -755,7 +889,8 @@ class DB
 			$this->rollback();
 			if ($this->isError())
 			{
-				error_log('Rhymix rollback failed: ' . $context . ' ' . $this->_errstr);
+				$info = $this->_handle->errorInfo();
+				error_log(sprintf('Rhymix rollback failed: %s SQLSTATE=%s driver_code=%s', $context, $info[0], $info[1] ?? 'unknown'));
 				break;
 			}
 		}

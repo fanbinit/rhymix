@@ -157,6 +157,104 @@ class DBTest extends \Codeception\Test\Unit
 		$this->assertSame(0, $db->rollback());
 	}
 
+	public function testCheckedSaveKeepsFirstErrorAndBlocksWritesAfterRollback()
+	{
+		$db = Rhymix\Framework\DB::getInstance();
+		$handle = $db->getHandle();
+		$table = 'test_save_' . bin2hex(random_bytes(8));
+		$handle->exec("CREATE TEMPORARY TABLE $table (id INT PRIMARY KEY) ENGINE=InnoDB");
+		$log = tempnam(sys_get_temp_dir(), 'save_log_');
+		$previous = ini_set('error_log', $log);
+		try
+		{
+			$level = $db->beginChecked('test.save');
+			$handle->exec("INSERT INTO $table VALUES (1)");
+			$this->assertFalse($handle->exec("INSERT INTO $table VALUES (1) /* private-marker */"));
+			$this->assertSame(1, $handle->exec("INSERT INTO $table VALUES (2)"));
+			$db->begin();
+			$handle->exec('ROLLBACK');
+			$db->rollback(); // Unwind the nested operation, keeping the failed save guarded.
+			try
+			{
+				$handle->exec("INSERT INTO $table VALUES (3)");
+				$this->fail('Write executed after transaction loss');
+			}
+			catch (Rhymix\Framework\Exceptions\DBError $e)
+			{
+				$this->assertSame('Save transaction already ended', $e->getMessage());
+			}
+			$this->assertFalse($db->commitChecked($level, 'test.save'));
+			$stmt = $handle->query("SELECT COUNT(*) FROM $table");
+			$this->assertEquals(0, $stmt->fetchColumn());
+			$stmt->closeCursor();
+			$this->assertTrue($db->commitChecked($db->beginChecked('test.next'), 'test.next'));
+			$records = [];
+			foreach (file($log) as $line)
+			{
+				if (preg_match('/Rhymix save diagnostic: (.+)/', $line, $match))
+				{
+					$records[] = json_decode($match[1], true);
+				}
+			}
+			$this->assertSame(['statement_error', 'transaction_ended', 'commit_mismatch'], array_column($records, 'event'));
+			$this->assertSame(1062, $records[2]['first_error']['driver_code']);
+			$this->assertSame('23000', $records[2]['first_error']['SQLSTATE']);
+			$this->assertSame('ROLLBACK', $records[2]['ended_at']);
+			$this->assertGreaterThan(0, $records[2]['connection_id']);
+			$this->assertStringNotContainsString('private-marker', file_get_contents($log));
+		}
+		finally
+		{
+			while ($db->getTransactionLevel()) $db->rollback();
+			$handle->exec("DROP TEMPORARY TABLE $table");
+			ini_set('error_log', $previous);
+			unlink($log);
+		}
+	}
+
+	public function testCheckedSaveDetectsServerRollbackOnConcurrentUpdate()
+	{
+		$db = Rhymix\Framework\DB::getInstance();
+		$handle = $db->getHandle();
+		$stmt = $handle->query("SHOW VARIABLES WHERE Variable_name IN ('innodb_snapshot_isolation', 'tx_isolation')");
+		$settings = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+		$stmt->closeCursor();
+		if (($settings['innodb_snapshot_isolation'] ?? '') !== 'ON' || ($settings['tx_isolation'] ?? '') !== 'REPEATABLE-READ')
+		{
+			$this->markTestSkipped('Requires MariaDB repeatable-read snapshot conflict detection');
+		}
+
+		$config = config('db');
+		Rhymix\Framework\Config::set('db.save_conflict_test', $config['master']);
+		$reader = Rhymix\Framework\DB::getInstance('save_conflict_test');
+		$other = $reader->getHandle();
+		$table = 'test_save_' . bin2hex(random_bytes(8));
+		$other->exec("CREATE TABLE $table (id INT PRIMARY KEY, n INT NOT NULL) ENGINE=InnoDB");
+		try
+		{
+			$other->exec("INSERT INTO $table VALUES (1,0),(2,0)");
+			$level = $db->beginChecked('test.conflict');
+			$stmt = $handle->query("SELECT n FROM $table WHERE id=1");
+			$this->assertEquals(0, $stmt->fetchColumn());
+			$stmt->closeCursor();
+			$handle->exec("UPDATE $table SET n=1 WHERE id=2");
+			$other->exec("UPDATE $table SET n=1 WHERE id=1");
+			$this->assertFalse($handle->exec("UPDATE $table SET n=2 WHERE id=1"));
+			$this->assertFalse($handle->inTransaction());
+			$this->assertFalse($db->commitChecked($level, 'test.conflict'));
+			$stmt = $other->query("SELECT n FROM $table ORDER BY id");
+			$this->assertEquals([1, 0], $stmt->fetchAll(PDO::FETCH_COLUMN));
+			$stmt->closeCursor();
+		}
+		finally
+		{
+			while ($db->getTransactionLevel()) $db->rollback();
+			$other->exec("DROP TABLE $table");
+			$reader->disconnect();
+			Rhymix\Framework\Config::set('db', $config);
+		}
+	}
+
 	public function testAddPrefixes()
 	{
 		$oDB = Rhymix\Framework\DB::getInstance();
@@ -192,7 +290,7 @@ class DBTest extends \Codeception\Test\Unit
 		$this->assertEquals($target, $oDB->addPrefixes($source));
 
 		$source = 'WITH RECURSIVE cte AS (SELECT * FROM documents INNER JOIN `cte`) SELECT * FROM cte JOIN member on cte.member_srl = member.member_srl';
-		$target = 'WITH RECURSIVE cte AS (SELECT * FROM `' . $prefix . 'documents` AS `documents` INNER JOIN `cte`) SELECT * FROM `cte` JOIN `rx_member` AS `member` on cte.member_srl = member.member_srl';
+		$target = 'WITH RECURSIVE cte AS (SELECT * FROM `' . $prefix . 'documents` AS `documents` INNER JOIN `cte`) SELECT * FROM `cte` JOIN `' . $prefix . 'member` AS `member` on cte.member_srl = member.member_srl';
 		$this->assertEquals($target, $oDB->addPrefixes($source));
 
 		$source = 'WITH RECURSIVE `cte` AS (SELECT * FROM tbl INNER JOIN cte AS h) SELECT * FROM cte WHERE a = ?';

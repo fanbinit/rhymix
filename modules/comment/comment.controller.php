@@ -700,7 +700,8 @@ class CommentController extends Comment
 
 		// begin transaction
 		$oDB = DB::getInstance();
-		$transaction_level = $oDB->begin();
+		$context = sprintf('comment.insertComment module_srl=%d document_srl=%d comment_srl=%d', $obj->module_srl, $obj->document_srl, $obj->comment_srl);
+		$transaction_level = $oDB->beginChecked($context);
 
 		// Enter a list of comments first
 		$list_args = new stdClass();
@@ -726,6 +727,7 @@ class CommentController extends Comment
 			// return if no parent comment exists
 			if(!$parent_output->toBool() || !$parent_output->data)
 			{
+				$oDB->rollback();
 				return new BaseObject(-1, 'parent comment does not exist');
 			}
 
@@ -776,6 +778,7 @@ class CommentController extends Comment
 		$output = executeQuery('comment.insertCommentList', $list_args);
 		if(!$output->toBool())
 		{
+			$oDB->rollback();
 			return $output;
 		}
 
@@ -793,6 +796,11 @@ class CommentController extends Comment
 		if($comment_count && (!$using_validation || $is_admin))
 		{
 			$output = $oDocumentController->updateCommentCount($document_srl, $comment_count, $obj->nick_name, $update_document);
+			if (!$output->toBool())
+			{
+				$oDB->rollback();
+				return new BaseObject(-1, 'msg_server_error_see_log');
+			}
 		}
 
 		if($obj->uploaded_count > 0)
@@ -813,7 +821,6 @@ class CommentController extends Comment
 		// call a trigger(after)
 		ModuleHandler::triggerCall('comment.insertComment', 'after', $obj);
 
-		$context = sprintf('comment.insertComment module_srl=%d document_srl=%d comment_srl=%d', $obj->module_srl, $obj->document_srl, $obj->comment_srl);
 		if (!$oDB->commitChecked($transaction_level, $context))
 		{
 			return new BaseObject(-1, 'msg_server_error_see_log');
@@ -1062,7 +1069,8 @@ class CommentController extends Comment
 
 		// begin transaction
 		$oDB = DB::getInstance();
-		$transaction_level = $oDB->begin();
+		$context = sprintf('comment.updateComment module_srl=%d document_srl=%d comment_srl=%d', $obj->module_srl, $obj->document_srl, $obj->comment_srl);
+		$transaction_level = $oDB->beginChecked($context);
 
 		// Update
 		$output = executeQuery('comment.updateComment', $obj);
@@ -1090,7 +1098,6 @@ class CommentController extends Comment
 		// call a trigger (after)
 		ModuleHandler::triggerCall('comment.updateComment', 'after', $obj);
 
-		$context = sprintf('comment.updateComment module_srl=%d document_srl=%d comment_srl=%d', $obj->module_srl, $obj->document_srl, $obj->comment_srl);
 		if (!$oDB->commitChecked($transaction_level, $context))
 		{
 			return new BaseObject(-1, 'msg_server_error_see_log');

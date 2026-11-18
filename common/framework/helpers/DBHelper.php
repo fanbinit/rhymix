@@ -28,6 +28,41 @@ class DBHelper extends \PDO
 	}
 
 	/**
+	 * An ERR packet can leave PDO's transaction flag stale after an InnoDB
+	 * rollback. Refresh the server status with a table-free read on this
+	 * connection. Bypass the query logger to preserve the original failure.
+	 */
+	public function refreshTransactionStatus(): ?bool
+	{
+		try
+		{
+			$stmt = parent::query('SELECT 1');
+			$stmt->fetchColumn();
+			$stmt->closeCursor();
+			return $this->inTransaction();
+		}
+		catch (\PDOException $e)
+		{
+			return null;
+		}
+	}
+
+	// Also trace a plugin ending the transaction directly on the PDO handle.
+	public function commit(): bool
+	{
+		$result = parent::commit();
+		DB::getInstance($this->_type)->observeSaveStatement('COMMIT');
+		return $result;
+	}
+
+	public function rollBack(): bool
+	{
+		$result = parent::rollBack();
+		DB::getInstance($this->_type)->observeSaveStatement('ROLLBACK');
+		return $result;
+	}
+
+	/**
 	 * Create a prepared statement.
 	 *
 	 * @param string $statement
@@ -39,6 +74,7 @@ class DBHelper extends \PDO
 	{
 		$start_time = microtime(true);
 		$db_class = DB::getInstance($this->_type);
+		$db_class->guardSaveTransaction();
 
 		try
 		{
@@ -61,6 +97,7 @@ class DBHelper extends \PDO
 			 */
 			$elapsed_time = microtime(true) - $start_time;
 			$db_class->addElapsedTime($elapsed_time);
+			$db_class->observeSaveStatement($statement, $e);
 			$db_class->setError(-1, $e->getMessage());
 			if (Debug::isEnabledForCurrentUser())
 			{
@@ -93,6 +130,7 @@ class DBHelper extends \PDO
 	{
 		$start_time = microtime(true);
 		$db_class = DB::getInstance($this->_type);
+		$db_class->guardSaveTransaction();
 		$args = func_get_args();
 		array_shift($args);
 
@@ -106,11 +144,13 @@ class DBHelper extends \PDO
 			$stmt = parent::query($statement, ...$args);
 			$stmt->setFetchMode($fetch_mode);
 			$stmt->setType($this->_type);
+			$db_class->observeSaveStatement($statement);
 			$db_class->clearError();
 		}
 		catch (\PDOException $e)
 		{
 			$stmt = false;
+			$db_class->observeSaveStatement($statement, $e);
 			$db_class->setError(-1, $e->getMessage());
 		}
 		finally
@@ -137,14 +177,18 @@ class DBHelper extends \PDO
 	{
 		$start_time = microtime(true);
 		$db_class = DB::getInstance($this->_type);
+		$db_class->guardSaveTransaction();
 
 		try
 		{
 			$result = parent::exec($statement);
+			$db_class->observeSaveStatement($statement);
 			$db_class->clearError();
 		}
 		catch (\PDOException $e)
 		{
+			$result = false;
+			$db_class->observeSaveStatement($statement, $e);
 			$db_class->setError(-1, $e->getMessage());
 		}
 		finally

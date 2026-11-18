@@ -853,7 +853,8 @@ class DocumentController extends Document
 
 		// begin transaction
 		$oDB = DB::getInstance();
-		$transaction_level = $oDB->begin();
+		$context = sprintf('document.insertDocument module_srl=%d document_srl=%d', $obj->module_srl, $obj->document_srl);
+		$transaction_level = $oDB->beginChecked($context);
 
 		// Insert data into the DB
 		$output = executeQuery('document.insertDocument', $obj);
@@ -964,7 +965,6 @@ class DocumentController extends Document
 			ModuleHandler::triggerCall('document.publishDocument', 'after', $obj);
 		}
 
-		$context = sprintf('document.insertDocument module_srl=%d document_srl=%d', $obj->module_srl, $obj->document_srl);
 		if (!$oDB->commitChecked($transaction_level, $context))
 		{
 			return new BaseObject(-1, 'msg_server_error_see_log');
@@ -1205,7 +1205,8 @@ class DocumentController extends Document
 
 		// Begin transaction
 		$oDB = DB::getInstance();
-		$transaction_level = $oDB->begin();
+		$context = sprintf('document.updateDocument module_srl=%d document_srl=%d', $obj->module_srl, $obj->document_srl);
+		$transaction_level = $oDB->beginChecked($context);
 
 		// Insert history
 		$bUseHistory = $document_config->use_history == 'Y' || $document_config->use_history == 'Trace';
@@ -1434,7 +1435,6 @@ class DocumentController extends Document
 			ModuleHandler::triggerCall('document.publishDocument', 'after', $obj);
 		}
 
-		$context = sprintf('document.updateDocument module_srl=%d document_srl=%d', $obj->module_srl, $obj->document_srl);
 		if (!$oDB->commitChecked($transaction_level, $context))
 		{
 			return new BaseObject(-1, 'msg_server_error_see_log');
